@@ -1,38 +1,52 @@
-# Camel K Basic Example
- 
-![Camel K CI](https://github.com/openshift-integration/camel-k-example-basic/workflows/Camel%20K%20CI/badge.svg)
+# Camel K Orchestration Example
 
-This example demonstrates how to get started with Camel K by showing you some of the most important 
-features that you should know before trying to develop more complex examples.
+This example demonstrates how to orchestrate integrations using Camel-K and Kafka.
 
-## Before you begin
+We are going to implement two integrations that interact through a database to simulate how cat adoptions work. 
+
+![Flux diagram](images/flux_diagram.svg)
+
+One integration will store cats coming from Kafka to the database waiting for a person to adopt them. The second integration will receive people interested in adopting and will match cats with them.
+
+## 0. Before you begin
 
 Make sure you check-out this repository from git and open it with [VSCode](https://code.visualstudio.com/).
 
-Instructions are based on [VSCode Didact](https://github.com/redhat-developer/vscode-didact), so make sure it's installed
-from the VSCode extensions marketplace.
+Instructions are based on [VSCode Didact](https://github.com/redhat-developer/vscode-didact), so make sure it's installed from the VSCode extensions marketplace.
 
 From the VSCode UI, right-click on the `readme.didact.md` file and select "Didact: Start Didact tutorial from File". A new Didact tab will be opened in VS Code.
 
 Make sure you've opened this readme file with Didact before jumping to the next section.
 
-## Preparing the cluster
+### Preparing the cluster
 
 This example can be run on any OpenShift 4.3+ cluster or a local development instance (such as [CRC](https://github.com/code-ready/crc)). Ensure that you have a cluster available and login to it using the OpenShift `oc` command line tool.
 
-You need to create a new project named `camel-basic` for running this example. This can be done directly from the OpenShift web console or by executing the command `oc new-project camel-basic` on a terminal window.
+You need to create a new project named `camel-orchestration` for running this example. This can be done directly from the OpenShift web console or by executing the command `oc new-project camel-orchestration` on a terminal window.
 
-You need to install the Camel K operator in the `camel-basic` project. To do so, go to the OpenShift 4.x web console, login with a cluster admin account and use the OperatorHub menu item on the left to find and install **"Red Hat Integration - Camel K"**. You will be given the option to install it globally on the cluster or on a specific namespace.
-If using a specific namespace, make sure you select the `camel-basic` project from the dropdown list.
-This completes the installation of the Camel K operator (it may take a couple of minutes).
 
-When the operator is installed, from the OpenShift Help menu ("?") at the top of the WebConsole, you can access the "Command Line Tools" page, where you can download the **"kamel"** CLI, that is required for running this example. The CLI must be installed in your system path.
+```
+oc new-project camel-orchestration
+```
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$oc%20new-project%20camel-orchestration&completion=New%20project%20created. "Opens a new terminal and sends the command above"){.didact})
+
+#### Installed Operators
+
+For this exercise we will need the Camel K, Strimzi and PostgreSQL operators installed on our project.
+
+To do so, go to the OpenShift 4.x web console, login with a cluster admin account and use the OperatorHub menu item on the left to find and install **"Camel K Operator"**, **"Strimzi"** and **"PostgreSQL Operator by Dev4Ddevs.com"**. You will be given the option to install it globally on the cluster or on a specific namespace.
+
+If using a specific namespace, make sure you select the `camel-orchestration` project from the dropdown list. 
+
+The installation may take a couple of minutes.
+
+When the operator **"Camel K Operator"** is installed, from the OpenShift Help menu ("?") at the top of the WebConsole, you can access the "Command Line Tools" page, where you can download the **"kamel"** CLI, that is required for running this example. The CLI must be installed in your system path.
 
 Refer to the **"Red Hat Integration - Camel K"** documentation for a more detailed explanation of the installation steps for the operator and the CLI.
 
 You can use the following section to check if your environment is configured properly.
 
-## Checking requirements
+### Checking requirements
 
 <a href='didact://?commandId=vscode.didact.validateAllRequirements' title='Validate all requirements!'><button>Validate all Requirements at Once!</button></a>
 
@@ -62,7 +76,7 @@ access all Camel K features.
 
 *Status: unknown*{#kamel-requirements-status}
 
-### Optional Requirements
+#### Optional Requirements
 
 The following requirements are optional. They don't prevent the execution of the demo, but may make it easier to follow.
 
@@ -78,77 +92,132 @@ You can install it from the VS Code Extensions marketplace.
 
 *Status: unknown*{#extension-requirement-status}
 
-
 ## 1. Preparing the project
 
-We'll connect to the `camel-basic` project and check the installation status.
+We'll connect to the `camel-orchestration` project and check the installation status, which should be fine if followed the previous steps.
 
-To change project, open a terminal tab and type the following command:
-
+Open a terminal tab and type the following command:
 
 ```
-oc project camel-basic
+oc project camel-orchestration
 ```
-([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$oc%20project%20camel-basic&completion=New%20project%20creation. "Opens a new terminal and sends the command above"){.didact})
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$oc%20project%20camel-orchestration&completion=New%20project%20creation. "Opens a new terminal and sends the command above"){.didact})
 
+Upon successful creation, you should ensure that the Camel K, PostgreSQL and Kafka operators are installed.
 
 We should now check that the operator is installed. To do so, execute the following command on a terminal:
-
-
-Upon successful creation, you should ensure that the Camel K operator is installed:
 
 ```
 oc get csv
 ```
 ([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$oc%20get%20csv&completion=Checking%20Cluster%20Service%20Versions. "Opens a new terminal and sends the command above"){.didact})
 
+You should get an output similar to this one:
 
-When Camel K is installed, you should find an entry related to `red-hat-camel-k-operator` in phase `Succeeded`.
+```$ oc get csv
+NAME                               DISPLAY                                VERSION   REPLACES                           PHASE
+camel-k-operator.v1.1.1            Camel K Operator                       1.1.1     camel-k-operator.v1.1.0            Succeeded
+postgresql-operator.v0.1.1         PostgreSQL Operator by Dev4Ddevs.com   0.1.1                                        Succeeded
+strimzi-cluster-operator.v0.19.0   Strimzi                                0.19.0    strimzi-cluster-operator.v0.18.0   Succeeded
+```
 
-You can now proceed to the next section.
+All operators should have an entry in phase `Succeeded`.
 
-## 2. Running a basic integration
 
-This repository contains a simple Camel K integration that periodically prints 
-a "Hello World..." message.
+## 2. Setting up complementary database
 
-The integration is all contained in a single file named `Basic.java` ([open](didact://?commandId=vscode.openFolder&projectFilePath=Basic.java&completion=Opened%20the%20Basic.java%20file "Opens the Basic.java file"){.didact}).
+This example uses a PostgreSQL database. We want to install it on a the project `camel-orchestration`. We can go to the OpenShift 4.x WebConsole page, use the OperatorHub menu item on the left hand side menu and use it to find and install "PostgreSQL Operator by Dev4Ddevs.com". This will install the operator and may take a couple minutes to install.
 
-> **Note:** the `Basic.java` file contains a simple integration that uses the `timer` and `log` components.
+Once the operator is installed, we can create a new database using
+
+```
+oc create -f resources/postgres.yaml -n camel-orchestration
+```
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$oc%20create%20-f%20resources%2Fpostgres.yaml%20-n%20camel-orchestration&completion=Create%20Database. "Create database"){.didact})
+
+We connect to the database pod to create a table and add data to be extracted later.
+
+```
+oc rsh $(oc get pods -o custom-columns=POD:.metadata.name --no-headers | grep mypostgre | grep -v deploy)
+```
+
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$oc%20rsh%20$(oc%20get%20pods%20-o%20custom-columns=POD:.metadata.name%20--no-headers%20%7C%20grep%20mypostgre%20%7C%20grep%20-v%20deploy)&completion=Connected%20to%20pod. "oc rsh pod"){.didact})
+
+```
+psql -U camel-k-orchestration orchestration \
+-c "CREATE TABLE cat (id SERIAL PRIMARY KEY, name VARCHAR NOT NULL, person VARCHAR, image VARCHAR);"
+```
+
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$psql%20-U%20camel-k-orchestration%20orchestration%20-c%20%22CREATE%20TABLE%20cat%20(id%20SERIAL%20PRIMARY%20KEY,%20name%20VARCHAR%20NOT%20NULL,%20person%20VARCHAR,%20image%20VARCHAR);%22&completion=Created%20table%20and%20added%20data. "psql create table"){.didact})
+
+```
+exit
+```
+
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$exit&completion=Pod%20connection%20closed. "Pod connection closed."){.didact})
+
+## 3. Setting up Kafka Cluster
+
+As we have the Strimzi operator installed, we are ready to create our cluster of Kafkas. 
+
+To do so, we just have to execute the following command:
+
+```
+ oc apply -f https://strimzi.io/examples/latest/kafka/kafka-persistent-single.yaml
+```
+
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$oc%20apply%20-f%20https%3A%2F%2Fstrimzi.io%2Fexamples%2Flatest%2Fkafka%2Fkafka-persistent-single.yaml&completion=Cluster%20being%20created. "Sends the command above"){.didact})
+
+We should explicitly wait for the cluster to be created.
+
+```
+oc wait kafka/my-cluster --for=condition=Ready --timeout=300s
+```
+
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$oc%20wait%20kafka%2Fmy-cluster%20--for%3Dcondition%3DReady%20--timeout%3D300s&completion=Cluster%20created. "Sends the command above"){.didact})
+
+We are going to create two kafka brokers that will be the entry points for all data in our integrations.
+
+The following commands will create new tabs on the terminal. Make sure you run them on a separated terminal, as these commands will not return, they will be waiting for input messages.
+
+```
+ oc run kafka-cat -ti --image=strimzi/kafka:0.19.0-kafka-2.5.0 --rm=true --restart=Never -- bin/kafka-console-producer.sh --broker-list my-cluster-kafka-bootstrap:9092 --topic cat
+ ```
+
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=Kafka1$$oc%20run%20kafka-cat%20-ti%20--image%3Dstrimzi%2Fkafka%3A0.19.0-kafka-2.5.0%20--rm%3Dtrue%20--restart%3DNever%20--%20bin%2Fkafka-console-producer.sh%20--broker-list%20my-cluster-kafka-bootstrap%3A9092%20--topic%20cat&completion=Cluster%20created. "Sends the command above"){.didact})
+
+```
+ oc run kafka-person -ti --image=strimzi/kafka:0.19.0-kafka-2.5.0 --rm=true --restart=Never -- bin/kafka-console-producer.sh --broker-list my-cluster-kafka-bootstrap:9092 --topic person
+ ```
+
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=Kafka2$$oc%20run%20kafka-personcat%20-ti%20--image%3Dstrimzi%2Fkafka%3A0.19.0-kafka-2.5.0%20--rm%3Dtrue%20--restart%3DNever%20--%20bin%2Fkafka-console-producer.sh%20--broker-list%20my-cluster-kafka-bootstrap%3A9092%20--topic%20person&completion=Cluster%20created. "Sends the command above"){.didact})
+
+Now that we have two topics created in Kafka, we can work in our integrations.
+
+## 3. Running the Integrations
+
+We are going to run in parallel some integrations that will be orchestrated to interact together.
+
+### a) Cat Input from Kafka to Database
+
+First we are going to implement the storage of cat input messages to the database.
+
+The integration is all contained in a single file named `CatInput.java` ([open](didact://?commandId=vscode.openFolder&projectFilePath=CatInput.java&completion=Opened%20the%20CatInput.java%20file "Opens the CatInput.java file"){.didact}).
+
+> **Note:** the `CatInput.java` file contains an integration that uses some components.
 > Dependency management is automatically handled by Camel K that imports all required libraries from the Camel
 > catalog via code inspection. This means you can use all 300+ Camel components directly in your routes.
 
-We're ready to run the integration on our `camel-basic` project in the cluster.
+We're ready to run the integration on our cluster.
 
-Use the following command to run it in "dev mode", in order to see the logs in the integration terminal:
-
-```
-kamel run Basic.java --dev
-```
-([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$kamel%20run%20Basic.java%20--dev&completion=Camel%20K%20basic%20integration%20run%20in%20dev%20mode. "Opens a new terminal and sends the command above"){.didact})
-
-If everything is ok, after the build phase finishes, you should see the Camel integration running and continuously printing "Hello World!..." in the terminal window.
-
-When running in dev mode, you can change the integration code and let Camel K redeploy the changes automatically.
-
-To try this feature,
-[open the `Basic.java` file](didact://?commandId=vscode.openFolder&projectFilePath=Basic.java&completion=Opened%20the%20Basic.java%20file "Opens the Basic.java file"){.didact} 
-and change "Hello World" into "Ciao Mondo", then save the file.
-You should see the new integration starting up in the terminal window and replacing the old one.
-
-[**To exit dev mode and terminate the execution**, just click here](didact://?commandId=vscode.didact.sendNamedTerminalCtrlC&text=camelTerm&completion=Camel%20K%20basic%20integration%20interrupted. "Interrupt the current operation on the terminal"){.didact} 
-or hit `ctrl+c` on the terminal window.
-
-> **Note:** When you terminate a "dev mode" execution, also the remote integration will be deleted. This gives the experience of a local program execution, but the integration is actually running in the remote cluster.
-
-To keep the integration running and not linked to the terminal, you can run it without "dev mode", just run:
+Use the following command to run the CatInput integration:
 
 ```
-kamel run Basic.java
+kamel run CatInput.java
 ```
-([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$kamel%20run%20Basic.java&completion=Camel%20K%20basic%20integration%20run. "Opens a new terminal and sends the command above"){.didact})
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$kamel%20run%20CatInput.java&completion=Camel%20K%20integration%20running. "Opens a new terminal and sends the command above"){.didact})
 
-
+If everything is ok, after the build phase finishes, the integration will be running and waiting for messages from the Kafka broker topic "cat".
 
 After executing the command, you should be able to see it among running integrations:
 
@@ -157,140 +226,182 @@ oc get integrations
 ```
 ([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$oc%20get%20integrations&completion=Getting%20running%20integrations. "Opens a new terminal and sends the command above"){.didact})
 
-An integration named `basic` should be present in the list and it should be in status `Running`. There's also a `kamel get` command which is an alternative way to list all running integrations.
+An integration named `cat-input` should be present in the list and it should be in status `Running`. 
+
+There's also a `kamel get` command which is an alternative way to list all running integrations.
 
 > **Note:** the first time you've run the integration, an IntegrationKit (basically, a container image) has been created for it and 
 > it took some time for this phase to finish. When you run the integration a second time, the existing IntegrationKit is reused 
 > (if possible) and the integration reaches the "Running" state much faster.
 >
 
-
-Even if it's not running in dev mode, you can still see the logs of the integration using the following command:
+You can see the logs of the integration using the following command:
 
 ```
-kamel log basic
+kamel log cat-input
 ```
-([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$kamel%20log%20basic&completion=Show%20integration%20logs. "Opens a new terminal and sends the command above"){.didact})
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$kamel%20log%20cat-input&completion=Show%20integration%20logs. "Opens a new terminal and sends the command above"){.didact})
 
-The last parameter ("basic") is the name of the running integration for which you want to display the logs.
+The last parameter is the name of the running integration for which you want to display the logs.
 
-[**Click here to terminate the log stream**](didact://?commandId=vscode.didact.sendNamedTerminalCtrlC&text=camelTerm&completion=Camel%20K%20basic%20integration%20interrupted. "Interrupt the current operation on the terminal"){.didact} 
+The log will show up some messages whenever we send some text through the cat broker stream.
+
+Now we can try sending some cat data through Kafka, like:
+
+```
+{'name': 'Princess Lollipop', 'image': 'https://cdn2.thecatapi.com/images/7j2.jpg'}
+```
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=Kafka1$$%7B'name'%3A%20'Princess%20Lollipop'%2C%20'image'%3A%20'https%3A%2F%2Fcdn2.thecatapi.com%2Fimages%2F7j2.jpg'%7D&completion=Princess%20Lollipop%20arrived. "Opens a new terminal and sends the command above"){.didact})
+
+```
+{'name': 'Lady Tuna Whiskers', 'image': 'https://cdn2.thecatapi.com/images/bl2.jpg'}
+```
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=Kafka1$$%7B'name'%3A%20'Lady%20Tuna%20Whiskers'%2C%20'image'%3A%20'https%3A%2F%2Fcdn2.thecatapi.com%2Fimages%2Fbl2.jpg'%7D&completion=Lady%20Tuna%20arrived. "Opens a new terminal and sends the command above"){.didact})
+
+Notice that this will be sent to the terminal with the Kafka cat topic waiting for input. You have to go back to the 'camelTerm' terminal to see the logs of the integration.
+
+Now, let's close the log on cat-input and move on to the next integration.
+
+[**Click here to terminate the log stream**](didact://?commandId=vscode.didact.sendNamedTerminalCtrlC&text=camelTerm&completion=Camel%20K%20integration%20interrupted. "Interrupt the current operation on the terminal"){.didact} 
 or hit `ctrl+c` on the terminal window.
 
 > **Note:** Your IDE may provide an "Apache Camel K Integrations" panel where you can see the list of running integrations and also open a window to display the logs.
 
+### b) Person Input from Kafka to Adopt
 
-## 2. Applying configuration and routing
+Now we are going to implement the reception of people wanting to adopt a cat.
 
-The second example is a bit more complex as it shows how to configure the integration using external properties and 
-also a simple content-based router.
+The integration is all contained in a single file named `PersonInput.java` ([open](didact://?commandId=vscode.openFolder&projectFilePath=PersonInput.java&completion=Opened%20the%20PersonInput.java%20file "Opens the PersonInput.java file"){.didact}).
 
-The integration is contained in a file named `Routing.java` ([open](didact://?commandId=vscode.openFolder&projectFilePath=Routing.java&completion=Opened%20the%20Routing.java%20file "Opens the Routing.java file"){.didact}).
-
-The routes use two configuration properties named `items` and `priority-marker` that should be provided using an external file such
-as the `routing.properties` ([open](didact://?commandId=vscode.openFolder&projectFilePath=routing.properties&completion=Opened%20the%20routing.properties%20file "Opens the routing.properties file"){.didact}).
-
-The `Routing.java` file shows how to inject properties into the routes via property placeholders and also the usage of the `@PropertyInject` annotation.
-
-To run the integration, we should link the integration to the property file providing configuration for it:
+Use the following command to run it:
 
 ```
-kamel run Routing.java --property-file routing.properties --dev
+kamel run PersonInput.java
 ```
-([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$kamel%20run%20Routing.java%20--property-file%20routing.properties%20--dev&completion=Run%20Routing.java%20integration. "Opens a new terminal and sends the command above"){.didact})
 
-Wait for the integration to be running (you should see the logs streaming in the terminal window).
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$kamel%20run%20PersonInput.java&completion=Camel%20K%20integration%20running%20mode. "Opens a new terminal and sends the command above"){.didact})
 
-You can now open both the [Routing.java](didact://?commandId=vscode.openFolder&projectFilePath=Routing.java&completion=Opened%20the%20Routing.java%20file "Opens the Routing.java file"){.didact} file or
-the [routing.properties](didact://?commandId=vscode.openFolder&projectFilePath=routing.properties&completion=Opened%20the%20routing.properties%20file "Opens the routing.properties file"){.didact}
-file, make some changes and see the integration redeployed.
-For example, change the word `door` with `*door` to see it sent to the priority queue.
+If everything is ok, after the build phase finishes, the integration will be running and waiting for messages from the Kafka broker topic "person".
 
-[**Click here to exit dev mode and terminate the execution**](didact://?commandId=vscode.didact.sendNamedTerminalCtrlC&text=camelTerm&completion=Camel%20K%20basic%20integration%20interrupted. "Interrupt the current operation on the terminal"){.didact}, 
+You can see the logs of the integration using the following command:
+
+```
+kamel log person-input
+```
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$kamel%20log%20person-input&completion=Show%20integration%20logs. "Opens a new terminal and sends the command above"){.didact})
+
+Now we can send persons to the Kafka stream:
+
+```
+Antonia 
+```
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=Kafka2$$Antonia&completion=Antonia%20arrived. "Opens a new terminal and sends the command above"){.didact})
+
+```
+Fulgencio 
+```
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=Kafka2$$Fulgencio&completion=Fulgencio%20arrived. "Opens a new terminal and sends the command above"){.didact})
+
+```
+Segisvaldo 
+```
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=Kafka2$$Segisvaldo&completion=Segisvaldo%20arrived. "Opens a new terminal and sends the command above"){.didact})
+
+As you can see, there are no cats available for Segisvaldo.
+
+Our basic workflow is finished: we can send cats through the Kafka cat topic that will be waiting on a table on the database for some person that arrives through the Kafka person topic to adopt them.
+
+Now, let's close the log of person-input and move on to the section.
+
+[**Click here to terminate the log stream**](didact://?commandId=vscode.didact.sendNamedTerminalCtrlC&text=camelTerm&completion=Camel%20K%20integration%20interrupted. "Interrupt the current operation on the terminal"){.didact} 
 or hit `ctrl+c` on the terminal window.
 
-This will also terminate the execution of the integration.
+## 4. Jobs to add data automatically
 
-## 3. Running integrations as Kubernetes CronJobs
+Right now, the Kafka streams are feed manually. But we can also feed them automatically. Let's add a couple of jobs to do this. 
 
-The previous example can be automatically deployed as a Kubernetes CronJob if the delay between executions is changed into a value that can be expressed by a cron tab expression.
+The manual input will still work, but this shows that you can have more than one process of inputting data to Kafka streams.
 
-For example, you can change the first endpoint (`timer:java?period=3000`) into the following: `timer:java?period=60000` (1 minute between executions). [Open the Routing.java file](didact://?commandId=vscode.openFolder&projectFilePath=Routing.java&completion=Opened%20the%20Routing.java%20file "Opens the Routing.java file"){.didact} to apply the changes.
+### a) Adding cats to the stream
 
-Now you can run the integration again:
+As an extra step on this exercise, we are going to implement a final job that sends cat json data to the Kafka "cat" topic with a timer.
 
-```
-kamel run Routing.java --property-file routing.properties
-```
+The integration is all contained in a single file named `AutoCat.java` ([open](didact://?commandId=vscode.openFolder&projectFilePath=AutoCat.java&completion=Opened%20the%20AutoCat.java%20file "Opens the AutoCat.java file"){.didact}).
 
-([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$kamel%20run%20Routing.java%20--property-file%20routing.properties&completion=Run%20Routing.java%20integration%20as%20CronJob. "Opens a new terminal and sends the command above"){.didact})
-
-Now you'll see that Camel K has materialized a cron job:
+Now we run it.
 
 ```
-oc get cronjob
+kamel run AutoCat.java 
 ```
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$kamel%20run%20AutoCat.java&completion=Camel%20K%20integration%20run. "Opens a new terminal and sends the command above"){.didact})
 
-([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$oc%20get%20cronjob&completion=Get%20CronJobs. "Opens a new terminal and sends the command above"){.didact})
-
-You'll find a Kubernetes CronJob named "routing".
-
-The running behavior changes, because now there's no pod always running (beware you should not store data in memory when using the cronJob strategy).
-
-You can see the pods starting and being destroyed by watching the namespace:
+You can see the logs of the integration using the following command:
 
 ```
-oc get pod -w
+kamel log auto-cat
 ```
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$kamel%20log%20auto-cat&completion=Show%20integration%20logs. "Opens a new terminal and sends the command above"){.didact})
 
-([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$oc%20get%20pod%20-w&completion=Watch%20Pods. "Opens a new terminal and sends the command above"){.didact})
+If we wait, we will see how this integration generates cats automatically and sends them to the Kafka topic. 
 
-[**Click here to exit the current command**](didact://?commandId=vscode.didact.sendNamedTerminalCtrlC&text=camelTerm&completion=Camel%20K%20basic%20integration%20interrupted. "Interrupt the current operation on the terminal"){.didact},
+Now, let's close the log of auto-cat and check the cat-input integration to see how the automatic cats are being properly fed.
+
+[**Click here to terminate the log stream**](didact://?commandId=vscode.didact.sendNamedTerminalCtrlC&text=camelTerm&completion=Camel%20K%20integration%20interrupted. "Interrupt the current operation on the terminal"){.didact} 
 or hit `ctrl+c` on the terminal window.
 
-To see the logs of each integration starting up, you can use the `kamel log` command:
-
 ```
-kamel log routing
+kamel log cat-input
 ```
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$kamel%20log%20cat-input&completion=Show%20integration%20logs. "Opens a new terminal and sends the command above"){.didact})
 
-([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$kamel%20log%20routing&completion=Watch%20integration%20logs. "Opens a new terminal and sends the command above"){.didact})
+Now, let's close the log and move on to the section.
 
-You should see every minute a JVM starting, executing a single operation and terminating.
-
-[**Click here to exit the current command**](didact://?commandId=vscode.didact.sendNamedTerminalCtrlC&text=camelTerm&completion=Camel%20K%20basic%20integration%20interrupted. "Interrupt the current operation on the terminal"){.didact},
+[**Click here to terminate the log stream**](didact://?commandId=vscode.didact.sendNamedTerminalCtrlC&text=camelTerm&completion=Camel%20K%20integration%20interrupted. "Interrupt the current operation on the terminal"){.didact} 
 or hit `ctrl+c` on the terminal window.
 
-The CronJob behavior is controlled via a Trait called `cron`. Traits are the main way to configure high level Camel K features, to 
-customize how integrations are rendered.
+### a) Adding persons to the stream
 
-To disable the cron feature and use the deployment strategy, you can run the integration with:
+As an extra step on this exercise, we are going to implement a final job that sends cat json data to the Kafka "person" topic with a timer.
 
-```
-kamel run Routing.java --property-file routing.properties -t cron.enabled=false
-```
-([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$kamel%20run%20Routing.java%20--property-file%20routing.properties%20-t%20cron.enabled=false&completion=Run%20Routing.java%20integration%20without%20CronJobs. "Opens a new terminal and sends the command above"){.didact})
+The integration is all contained in a single file named `AutoPerson.java` ([open](didact://?commandId=vscode.openFolder&projectFilePath=AutoPerson.java&completion=Opened%20the%20AutoCat.java%20file "Opens the AutoPerson.java file"){.didact}).
 
-This will disable the cron trait and restore the classic behavior (always running pod).
-
-You should see it reflected in the logs (which will be printed every minute by the same JVM):
+Now we run it.
 
 ```
-kamel log routing
+kamel run AutoPerson.java 
 ```
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$kamel%20run%20AutoPerson.java&completion=Camel%20K%20integration%20run. "Opens a new terminal and sends the command above"){.didact})
 
-([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$kamel%20log%20routing&completion=Watch%20integration%20logs. "Opens a new terminal and sends the command above"){.didact})
+We can watch the logs of the "AutoPerson" integration to see how all the orchestration works.
 
+```
+kamel log auto-person
+```
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$kamel%20log%20auto-person&completion=Show%20integration%20logs. "Opens a new terminal and sends the command above"){.didact})
 
-[**Click here to exit the current command**](didact://?commandId=vscode.didact.sendNamedTerminalCtrlC&text=camelTerm&completion=Camel%20K%20basic%20integration%20interrupted. "Interrupt the current operation on the terminal"){.didact},
+If we wait, we will see how this integration generates persons automatically and sends them to the Kafka topic. 
+
+Now, let's close the log of auto-person and check the person-input integration to see how the automatic cats are being properly fed.
+
+[**Click here to terminate the log stream**](didact://?commandId=vscode.didact.sendNamedTerminalCtrlC&text=camelTerm&completion=Camel%20K%20integration%20interrupted. "Interrupt the current operation on the terminal"){.didact} 
 or hit `ctrl+c` on the terminal window.
 
-You can continue to hack on the examples.
+```
+kamel log person-input
+```
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$kamel%20log%20cat-input&completion=Show%20integration%20logs. "Opens a new terminal and sends the command above"){.didact})
 
-## 4. Uninstall
+Now, let's close the log to finish.
+
+[**Click here to terminate the log stream**](didact://?commandId=vscode.didact.sendNamedTerminalCtrlC&text=camelTerm&completion=Camel%20K%20integration%20interrupted. "Interrupt the current operation on the terminal"){.didact} 
+or hit `ctrl+c` on the terminal window.
+
+## 5. Uninstall
 
 To cleanup everything, execute the following command:
 
-```oc delete project camel-basic```
+```oc delete project camel-orchestration```
 
-([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$oc%20delete%20project%20camel-basic&completion=Removed%20the%20project%20from%20the%20cluster. "Cleans up the cluster after running the example"){.didact})
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$oc%20delete%20project%20camel-orchestration&completion=Removed%20the%20project%20from%20the%20cluster. "Cleans up the cluster after running the example"){.didact})
+
+Now you are ready to implement your own orchestrations with Kafka and Camel K.
