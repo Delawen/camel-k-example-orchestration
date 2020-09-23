@@ -24,7 +24,6 @@ This example can be run on any OpenShift 4.3+ cluster or a local development ins
 
 You need to create a new project named `camel-orchestration` for running this example. This can be done directly from the OpenShift web console or by executing the command `oc new-project camel-orchestration` on a terminal window.
 
-
 ```
 oc new-project camel-orchestration
 ```
@@ -42,9 +41,26 @@ The installation may take a couple of minutes.
 
 When the operator **"Camel K Operator"** is installed, from the OpenShift Help menu ("?") at the top of the WebConsole, you can access the "Command Line Tools" page, where you can download the **"kamel"** CLI, that is required for running this example. The CLI must be installed in your system path.
 
-Refer to the **"Red Hat Integration - Camel K"** documentation for a more detailed explanation of the installation steps for the operator and the CLI.
-
 You can use the following section to check if your environment is configured properly.
+
+After successful installation, we'll configure an `IntegrationPlatform` with specific default settings using the following command:
+
+```
+kamel install --olm=false --skip-cluster-setup --skip-operator-setup --maven-repository  https://jitpack.io@id=jitpack
+```
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$kamel%20install%20--olm=false%20--skip-cluster-setup%20--skip-operator-setup%20--maven-repository%20https://jitpack.io@id=jitpack@snapshots&completion=Camel%20K%20IntegrationPlatform%20creation. "Opens a new terminal and sends the command above"){.didact})
+
+NOTE: We use `Jitpack` to package the model project into a shared JAR that will be used by all integrations in this project, hence we add https://jitpack.io to the list of Maven repositories known to the operator. This configuration is handy but experimental and it may change in the GA version. In a production scenario, we suggest you to deploy the model JAR into your own Maven registry and reference it in the platform configuration.
+
+Camel K should have created an IntegrationPlatform custom resource in your project. To verify it:
+
+```
+oc get integrationplatform
+```
+([^ execute](didact://?commandId=vscode.didact.sendNamedTerminalAString&text=camelTerm$$oc%20get%20integrationplatform&completion=Camel%20K%20integration%20platform%20verification. "Opens a new terminal and sends the command above"){.didact})
+
+If everything is ok, you should see an IntegrationPlatform named `camel-k` with phase `Ready` (it can take some time for the 
+operator to being installed).
 
 ### Checking requirements
 
@@ -57,7 +73,6 @@ The OpenShift CLI tool ("oc") will be used to interact with the OpenShift cluste
 [Check if the OpenShift CLI ("oc") is installed](didact://?commandId=vscode.didact.cliCommandSuccessful&text=oc-requirements-status$$oc%20help&completion=Checked%20oc%20tool%20availability "Tests to see if `oc help` returns a 0 return code"){.didact}
 
 *Status: unknown*{#oc-requirements-status}
-
 
 **Connection to an OpenShift cluster**
 
