@@ -1,5 +1,4 @@
-// camel-k: language=java property-file=orchestration.properties
-// camel-k: source=customizers/PostgreSQLCustomizer.java 
+// camel-k: language=java 
 
 import org.apache.camel.builder.RouteBuilder;
 
