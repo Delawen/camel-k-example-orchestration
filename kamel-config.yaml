@@ -1,0 +1,15 @@
+kamel:
+  run:
+    integration:
+      cat-input:
+        property-files: '[orchestration.properties]'
+        dependencies: '[camel:jdbc,camel:gson,mvn:org.apache.commons:commons-dbcp2:jar:2.7.0,mvn:org.postgresql:postgresql:jar:42.2.13,mvn:com.github.Delawen:camel-k-example-orchestration:v0.1]'
+
+      person-input:
+        property-files: '[orchestration.properties]'
+        dependencies: '[camel:jdbc,mvn:org.apache.commons:commons-dbcp2:jar:2.7.0,mvn:org.postgresql:postgresql:jar:42.2.13]'
+
+      auto-cat:
+        property-files: '[]'
+        dependencies: '[camel:gson]'
+  
